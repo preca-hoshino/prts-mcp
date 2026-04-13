@@ -3,6 +3,8 @@
 //! This is the main entry point for the PRTS MCP server, using `rust-mcp-sdk`.
 
 pub mod handler;
+pub mod prompts;
+pub mod resources;
 pub mod tools;
 pub mod utils;
 
@@ -28,8 +30,8 @@ async fn main() -> SdkResult<()> {
         server_info: Implementation {
             name: "prts-mcp".into(),
             version: "0.1.0".into(),
-            title: Some("HelloWorld Server".into()),
-            description: Some("helloworld description".into()),
+            title: Some("PRTS MCP Server".into()),
+            description: Some("Arknights PRTS Wiki Data Provider".into()),
             icons: vec![],
             website_url: None,
         },
@@ -38,7 +40,7 @@ async fn main() -> SdkResult<()> {
             ..Default::default()
         },
         meta: None,
-        instructions: Some("Returns hello,world".into()),
+        instructions: Some("Provides Arknights operator data from PRTS wiki".into()),
         protocol_version: ProtocolVersion::V2025_11_25.into(),
     };
 
