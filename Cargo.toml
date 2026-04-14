@@ -19,6 +19,7 @@ indexmap = "2.7.0"
 tokio = { version = "1.51.1", features = ["full"] }
 rust-mcp-sdk = "0.9.0"
 async-trait = "0.1.89"
+scraper = "0.26.0"
 
 [lints.rust]
 unsafe_code = "forbid"

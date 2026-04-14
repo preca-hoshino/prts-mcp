@@ -36,6 +36,10 @@ async fn main() -> SdkResult<()> {
             website_url: None,
         },
         capabilities: ServerCapabilities {
+            resources: Some(rust_mcp_sdk::schema::ServerCapabilitiesResources {
+                subscribe: Some(false),
+                list_changed: Some(false),
+            }),
             tools: Some(ServerCapabilitiesTools { list_changed: None }),
             ..Default::default()
         },
