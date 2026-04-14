@@ -1,6 +1,6 @@
 //! Request handlers for the MCP Server.
 
-use crate::tools::HelloWorldTools;
+use crate::tools::OperatorTools;
 use async_trait::async_trait;
 use rust_mcp_sdk::{
     McpServer,
@@ -26,7 +26,7 @@ impl ServerHandler for MyServerHandler {
         Ok(ListToolsResult {
             meta: None,
             next_cursor: None,
-            tools: HelloWorldTools::tools(),
+            tools: OperatorTools::tools(),
         })
     }
 
@@ -35,11 +35,11 @@ impl ServerHandler for MyServerHandler {
         params: CallToolRequestParams,
         _runtime: Arc<dyn McpServer>,
     ) -> std::result::Result<CallToolResult, CallToolError> {
-        let tool_params: HelloWorldTools =
-            HelloWorldTools::try_from(params).map_err(CallToolError::new)?;
+        let tool_params: OperatorTools =
+            OperatorTools::try_from(params).map_err(CallToolError::new)?;
 
         match tool_params {
-            HelloWorldTools::HelloWorldTool(tool) => tool.call_tool(),
+            OperatorTools::GetOperatorTool(tool) => tool.call_tool().await,
         }
     }
 }
