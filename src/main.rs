@@ -37,8 +37,8 @@ async fn main() -> SdkResult<()> {
         },
         capabilities: ServerCapabilities {
             resources: Some(rust_mcp_sdk::schema::ServerCapabilitiesResources {
-                subscribe: Some(false),
-                list_changed: Some(false),
+                subscribe: None,
+                list_changed: None,
             }),
             tools: Some(ServerCapabilitiesTools { list_changed: None }),
             ..Default::default()
