@@ -41,7 +41,7 @@ use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 - 干员名称不确定时，请先询问用户确认后再调用本工具\n\
 </when_not_to_use>\n\n\
 <parameters>\n\
-- name: 干员名称，须与 PRTS Wiki 页面标题一致。支持中文名（如「能天使」）或罗马字名称（如「Exusiai」），大小写不敏感。名称错误时工具将返回错误提示。\n\
+- name: 干员名称，须与 PRTS Wiki 页面标题一致。仅支持中文名（如「能天使」）。名称错误时工具将返回错误提示。\n\
 - category: 数据域标识符（大小写不敏感），合法值如下：\n  · BASIC   — 基础信息（职业/势力/画师/CV/获得方式）\n  · COMBAT  — 战斗数据（属性面板/天赋/技能/模组/攻击范围）\n  · BUILD   — 养成材料（精英化/技能升级/模组所需材料）\n  · LORE    — 干员档案（背景故事/档案1-4/模组故事）\n  · GALLERY — 图鉴立绘（精英立绘说明/时装信息与链接）\n  · VOICE   — 语音台词（中日文文本与音频下载链接）\n  · ALL     — 按顺序返回以上全部数据域\n\
 </parameters>\n\n\
 <output_format>\n\
@@ -61,8 +61,7 @@ use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 #[derive(Debug, ::serde::Deserialize, ::serde::Serialize, JsonSchema)]
 pub struct GetOperatorTool {
     /// 干员名称，须与 PRTS Wiki 页面标题一致。
-    /// 支持中文名（如「能天使」）或罗马字名称（如「Exusiai」），大小写不敏感。
-    /// 名称错误时工具将返回以 ❌ 开头的错误提示。
+    /// 仅支持中文名（如「能天使」）。名称错误时工具将返回以 ❌ 开头的错误提示。
     name: String,
 
     /// 数据域标识符（大小写不敏感）。
