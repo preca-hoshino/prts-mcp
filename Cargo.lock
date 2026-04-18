@@ -1316,7 +1316,6 @@ name = "prts-mcp"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "indexmap",
  "regex",
  "reqwest",
  "rust-mcp-sdk",
