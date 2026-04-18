@@ -2,8 +2,10 @@
 //! 本模块统一管理所有 Tool 定义，以及各域的 wikitext 解析器。
 
 pub mod get_operator;
+pub mod search_operators;
 
 use get_operator::GetOperatorTool;
 use rust_mcp_sdk::tool_box;
+use search_operators::SearchOperatorsTool;
 
-tool_box!(OperatorTools, [GetOperatorTool]);
+tool_box!(OperatorTools, [GetOperatorTool, SearchOperatorsTool]);
