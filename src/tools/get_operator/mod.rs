@@ -10,6 +10,7 @@ pub(super) mod build;
 pub(super) mod combat;
 pub(super) mod gallery;
 pub(super) mod lore;
+pub(super) mod strings;
 pub(super) mod voice;
 
 pub use tool::GetOperatorTool;
