@@ -21,12 +21,13 @@ use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 /// - `LORE`    — 干员档案（背景故事、干员档案1-4、模组故事）
 /// - `GALLERY` — 图鉴立绘（精英立绘描述、时装信息与链接）
 /// - `VOICE`   — 语音台词（中日文台词文本与音频链接）
+/// - `ALL`     — 按顺序获取以上全部数据域
 #[mcp_tool(name = "get_operator", description = "获取干员PRTS Wiki数据")]
 #[derive(Debug, ::serde::Deserialize, ::serde::Serialize, JsonSchema)]
 pub struct GetOperatorTool {
     /// 干员名（须与 PRTS Wiki 页面标题一致，例如：\"陈\"、\"Mon3tr\"）
     name: String,
-    /// 数据域标识（全大写）：BASIC / COMBAT / BUILD / LORE / GALLERY / VOICE
+    /// 数据域标识（全大写）：BASIC / COMBAT / BUILD / LORE / GALLERY / VOICE / ALL
     category: String,
 }
 
@@ -92,11 +93,48 @@ impl GetOperatorTool {
                 super::voice::parse_voice(&voice_text)
             }
 
+            "ALL" => {
+                // 按 BASIC → COMBAT → BUILD → LORE → GALLERY → VOICE 顺序拼接
+                let all_lines: Vec<String> = main_text.lines().map(str::to_string).collect();
+                let voice_page = format!("{}/语音记录", self.name);
+                let voice_text = fetch_wikitext(&voice_page)
+                    .await
+                    .map_err(|e| CallToolError::new(std::io::Error::other(e.to_string())))?;
+
+                let mut all: Vec<String> = Vec::new();
+                all.extend(super::basic::parse_basic(&blocks.basic, &main_text));
+                all.push(String::new());
+                all.push("---".to_string());
+                all.push(String::new());
+                all.extend(super::combat::parse_combat(&combat_lines, Some(&main_text)).await);
+                all.push(String::new());
+                all.push("---".to_string());
+                all.push(String::new());
+                all.extend(super::build::parse_build(&all_lines));
+                all.push(String::new());
+                all.push("---".to_string());
+                all.push(String::new());
+                all.extend(super::lore::parse_lore(&blocks.lore, &main_text));
+                all.push(String::new());
+                all.push("---".to_string());
+                all.push(String::new());
+                all.extend(super::gallery::parse_gallery(
+                    &blocks.gallery,
+                    &main_text,
+                    &self.name,
+                ));
+                all.push(String::new());
+                all.push("---".to_string());
+                all.push(String::new());
+                all.extend(super::voice::parse_voice(&voice_text));
+                all
+            }
+
             _ => {
                 return Ok(CallToolResult::text_content(vec![TextContent::from(
                     format!(
                         "❌ 错误：无效的 `category` 参数「{}」。\n\
-                         请使用以下任一标准值（全大写）：BASIC / COMBAT / BUILD / LORE / GALLERY / VOICE",
+                         请使用以下任一标准值（全大写）：BASIC / COMBAT / BUILD / LORE / GALLERY / VOICE / ALL",
                         self.category
                     ),
                 )]));
