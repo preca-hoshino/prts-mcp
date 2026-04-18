@@ -3,7 +3,12 @@
 //! `get_operator` MCP Tool 实现。
 //!
 //! 接收干员名与数据域标识，从 PRTS Wiki 拉取并解析对应的 Markdown 数据。
+//! 所有文本常量（错误信息、字段键名等）统一定义于 [`super::strings`]。
 
+use super::strings::{
+    COMBAT_GLOBAL_FIELDS, ERR_INVALID_CATEGORY, ERR_OPERATOR_NOT_FOUND, FIELD_CHAR_NAME,
+    FIELD_FOREIGN_NAME, VALID_CATEGORIES, VOICE_PAGE_SUFFIX,
+};
 use crate::utils::categorizer::categorize_lines;
 use crate::utils::wiki_client::fetch_wikitext;
 use rust_mcp_sdk::macros::JsonSchema;
@@ -23,42 +28,30 @@ use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 /// - `ALL`     — 按顺序获取以上全部数据域
 #[mcp_tool(
     name = "get_operator",
-    description = "从 PRTS Wiki 查询明日方舟干员的详细数据，以 Markdown 格式返回。
-
-<when_to_use>
-- 用户询问干员的天赋、技能、属性面板或模组信息
-- 用户需要了解干员的背景故事、干员档案或世界观内容
-- 用户查询干员精英化、技能升级或模组所需的养成材料
-- 用户想获取干员语音台词的中日文原文或音频下载链接
-- 用户询问干员的职业分支、势力归属、画师或 CV 等基础属性
-</when_to_use>
-
-<when_not_to_use>
-- 查询游戏内活动、公告、限时卡池或服务器状态（此工具不支持）
-- 干员名称不确定时，请先询问用户确认后再调用本工具
-</when_not_to_use>
-
-<parameters>
-- name: 干员名称，须与 PRTS Wiki 页面标题一致。支持中文名（如「能天使」）或罗马字名称（如「Exusiai」），大小写不敏感。名称错误时工具将返回错误提示。
-- category: 数据域标识符（大小写不敏感），合法值如下：
-  · BASIC   — 基础信息（职业/势力/画师/CV/获得方式）
-  · COMBAT  — 战斗数据（属性面板/天赋/技能/模组/攻击范围）
-  · BUILD   — 养成材料（精英化/技能升级/模组所需材料）
-  · LORE    — 干员档案（背景故事/档案1-4/模组故事）
-  · GALLERY — 图鉴立绘（精英立绘说明/时装信息与链接）
-  · VOICE   — 语音台词（中日文文本与音频下载链接）
-  · ALL     — 按顺序返回以上全部数据域
-</parameters>
-
-<output_format>
-返回 Markdown 文档，顶级标题格式为「# 干员名 外文名」（外文名用反引号包裹）。
-指定单一 category 时返回对应数据块；指定 ALL 时，各数据域之间以「---」水平分隔线分隔。
-若干员页面不存在则返回以 ❌ 开头的错误说明。
-</output_format>
-
-<important>
-此工具依赖 PRTS Wiki 外部网络请求，响应受网络状况影响。
-选择 VOICE 或 ALL 时将额外请求语音子页面，耗时约为单域查询的 2 倍。
+    description = "从 PRTS Wiki 查询明日方舟干员的详细数据，以 Markdown 格式返回。\n\n\
+<when_to_use>\n\
+- 用户询问干员的天赋、技能、属性面板或模组信息\n\
+- 用户需要了解干员的背景故事、干员档案或世界观内容\n\
+- 用户查询干员精英化、技能升级或模组所需的养成材料\n\
+- 用户想获取干员语音台词的中日文原文或音频下载链接\n\
+- 用户询问干员的职业分支、势力归属、画师或 CV 等基础属性\n\
+</when_to_use>\n\n\
+<when_not_to_use>\n\
+- 查询游戏内活动、公告、限时卡池或服务器状态（此工具不支持）\n\
+- 干员名称不确定时，请先询问用户确认后再调用本工具\n\
+</when_not_to_use>\n\n\
+<parameters>\n\
+- name: 干员名称，须与 PRTS Wiki 页面标题一致。支持中文名（如「能天使」）或罗马字名称（如「Exusiai」），大小写不敏感。名称错误时工具将返回错误提示。\n\
+- category: 数据域标识符（大小写不敏感），合法值如下：\n  · BASIC   — 基础信息（职业/势力/画师/CV/获得方式）\n  · COMBAT  — 战斗数据（属性面板/天赋/技能/模组/攻击范围）\n  · BUILD   — 养成材料（精英化/技能升级/模组所需材料）\n  · LORE    — 干员档案（背景故事/档案1-4/模组故事）\n  · GALLERY — 图鉴立绘（精英立绘说明/时装信息与链接）\n  · VOICE   — 语音台词（中日文文本与音频下载链接）\n  · ALL     — 按顺序返回以上全部数据域\n\
+</parameters>\n\n\
+<output_format>\n\
+返回 Markdown 文档，顶级标题格式为「# 干员名 外文名」（外文名用反引号包裹）。\n\
+指定单一 category 时返回对应数据块；指定 ALL 时，各数据域之间以「---」水平分隔线分隔。\n\
+若干员页面不存在则返回以 ❌ 开头的错误说明。\n\
+</output_format>\n\n\
+<important>\n\
+此工具依赖 PRTS Wiki 外部网络请求，响应受网络状况影响。\n\
+选择 VOICE 或 ALL 时将额外请求语音子页面，耗时约为单域查询的 2 倍。\n\
 </important>",
     read_only_hint = true,
     destructive_hint = false,
@@ -86,19 +79,11 @@ impl GetOperatorTool {
     /// 若干员不存在或 `category` 非法，返回带 `isError: true` 的工具执行错误。
     #[allow(clippy::too_many_lines)]
     pub async fn call_tool(&self) -> Result<CallToolResult, CallToolError> {
-        // 1. 服务端输入验证（不信任 LLM 填写的参数，防止越向攻击）
-        let valid_categories = [
-            "BASIC", "COMBAT", "BUILD", "LORE", "GALLERY", "VOICE", "ALL",
-        ];
+        // 1. 服务端输入验证（不信任 LLM 填写的参数，防止越界调用）
         let category_upper = self.category.to_uppercase();
-        if !valid_categories.contains(&category_upper.as_str()) {
+        if !VALID_CATEGORIES.contains(&category_upper.as_str()) {
             return Ok(CallToolResult::with_error(CallToolError::from_message(
-                format!(
-                    "❌ 错误：无效的 `category` 参数「{}」。\n\
-                     请使用以下任一标准值（大小写不敏感）：\n\
-                     BASIC / COMBAT / BUILD / LORE / GALLERY / VOICE / ALL",
-                    self.category
-                ),
+                ERR_INVALID_CATEGORY.replace("{category}", &self.category),
             )));
         }
 
@@ -109,19 +94,15 @@ impl GetOperatorTool {
 
         if main_text.is_empty() {
             return Ok(CallToolResult::with_error(CallToolError::from_message(
-                format!(
-                    "🔍 未找到干员「{}」的 Wiki 页面，请检查名称是否正确。\n\
-                     示例正确名称：「能天使」、「陈」、「Mon3tr」。",
-                    self.name
-                ),
+                ERR_OPERATOR_NOT_FOUND.replace("{name}", &self.name),
             )));
         }
 
         // 3. 提取全局元数据
-        let char_name = extract_line_field(&main_text, "干员名")
+        let char_name = extract_line_field(&main_text, FIELD_CHAR_NAME)
             .unwrap_or(self.name.as_str())
             .to_string();
-        let foreign_name = extract_line_field(&main_text, "干员外文名")
+        let foreign_name = extract_line_field(&main_text, FIELD_FOREIGN_NAME)
             .unwrap_or("")
             .to_string();
 
@@ -130,7 +111,7 @@ impl GetOperatorTool {
 
         // 5. 注入 combat 所需的全局字段（职业/分支/特性）
         let mut combat_lines = blocks.combat;
-        for field in &["职业", "分支", "特性"] {
+        for field in COMBAT_GLOBAL_FIELDS {
             if let Some(val) = extract_line_field(&main_text, field) {
                 combat_lines.insert(0, format!("|{field}={val}"));
             }
@@ -152,7 +133,7 @@ impl GetOperatorTool {
             "GALLERY" => super::gallery::parse_gallery(&blocks.gallery, &main_text, &self.name),
 
             "VOICE" => {
-                let voice_page = format!("{}/语音记录", self.name);
+                let voice_page = format!("{}{}", self.name, VOICE_PAGE_SUFFIX);
                 let voice_text = fetch_wikitext(&voice_page)
                     .await
                     .map_err(|e| CallToolError::new(std::io::Error::other(e.to_string())))?;
@@ -162,7 +143,7 @@ impl GetOperatorTool {
             "ALL" => {
                 // 按 BASIC → COMBAT → BUILD → LORE → GALLERY → VOICE 顺序拼接
                 let all_lines: Vec<String> = main_text.lines().map(str::to_string).collect();
-                let voice_page = format!("{}/语音记录", self.name);
+                let voice_page = format!("{}{}", self.name, VOICE_PAGE_SUFFIX);
                 let voice_text = fetch_wikitext(&voice_page)
                     .await
                     .map_err(|e| CallToolError::new(std::io::Error::other(e.to_string())))?;
