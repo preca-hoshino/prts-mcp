@@ -556,7 +556,7 @@ fn render_talents(lines: &[String]) -> Vec<String> {
         }
 
         if let Some(cap) = REX_TALENT_SUB.captures(line) {
-            let is_pot = !cap[1].is_empty();
+            let is_pot = cap.get(1).is_some();
             let sid = cap[2].to_string();
             let subk = cap[3].to_string();
             let val = cap[4].to_string();
