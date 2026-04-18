@@ -136,7 +136,7 @@ Step 2（有属性参数时并发执行）: 从干员一览提取全量属性，
   </param>\n\
   <param name=\"tag\" required=\"false\">\n\
     <desc>按公招词缀筛选，精确匹配。注意：「近战」「远程」不是词缀，请用 position 参数。</desc>\n\
-    <values>治疗, 支援, 输出, 爆发, 生存, 防护, 减速, 削弱, 控场, 召唤, 快速复活, 群攻, 位移, 元素, 高空, 费用回复, 支援机械, 新手</values>\n\
+    <values>治疗, 支援, 输出, 群攻, 减速, 生存, 防护, 削弱, 位移, 控场, 爆发, 召唤, 快速复活, 费用回复, 支援机械, 元素, 高空</values>\n\
   </param>\n\
   <param name=\"limit\" required=\"false\">\n\
     <desc>最大返回结果数，默认 10，最大 50。</desc>\n\
