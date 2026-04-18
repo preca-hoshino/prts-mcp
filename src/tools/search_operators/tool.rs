@@ -2,16 +2,22 @@
 #![allow(missing_docs)]
 //! `search_operators` MCP Tool 实现。
 //!
-//! 通过 PRTS Wiki 的 `MediaWiki` 搜索 API 模糊搜索干员，
-//! 并使用 `分类:干员` 分类验证确保结果只包含干员页面。
+//! 工作流：
+//! 1. 用 `query` 并发调用 PRTS Wiki opensearch + fulltext 搜索 API，
+//!    经 `分类:干员` 验证得到「搜索集合 A」。
+//! 2. 若提供了任意属性过滤参数，拉取「干员一览」HTML 提取全量元数据，
+//!    内存过滤后得到「属性集合 B」。
+//! 3. 若无过滤参数返回 A；否则返回 A ∩ B。
+
+use std::collections::HashSet;
 
 use reqwest::Client;
-use rust_mcp_sdk::macros::JsonSchema;
-use rust_mcp_sdk::macros::mcp_tool;
+use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
 use rust_mcp_sdk::schema::schema_utils::CallToolError;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::Deserialize;
-use std::collections::HashSet;
+
+use crate::resources::operator_list::{OperatorMeta, fetch_operator_meta_list};
 
 // ─── MediaWiki API URL 常量 ────────────────────────────────────────────────
 
@@ -34,10 +40,9 @@ const PRTS_PAGE_BASE: &str = "https://prts.wiki/w/";
 
 // ─── 内部数据结构 ──────────────────────────────────────────────────────────
 
-/// 搜索结果条目（中间态，未验证是否为干员页面）
+/// 搜索结果候选（来自 API）
 #[derive(Debug, Clone)]
 struct SearchCandidate {
-    /// 页面中文标题
     title: String,
 }
 
@@ -94,35 +99,52 @@ struct CategoryEntry {
 /// 在 PRTS Wiki 搜索明日方舟干员的 MCP Tool。
 #[mcp_tool(
     name = "search_operators",
-    description = "在 PRTS Wiki 中搜索明日方舟干员，返回匹配的干员名列表。\n\n\
+    description = "在 PRTS Wiki 中搜索明日方舟干员。先用关键词搜索，若提供属性参数则进一步过滤，两者取交集返回匹配干员列表。\n\n\
 <when_to_use>\n\
-- 用户只知道干员名称的一部分（中文或外文），需要确认正式名称\n\
-- 用户询问某个职业/分支有哪些干员（如「有哪些神射手？」）\n\
-- 用户想按势力/阵营查找干员（如「企鹅物流有哪些干员？」）\n\
-- 在调用 get_operator 之前，需要确认干员的精确中文名\n\
+- 用户知道干员名称的一部分（中文或外文），需要确认正式名称\n\
+- 用户想按职业/星级/获取途径/词缀筛选干员\n\
+- 调用 get_operator 前确认干员精确中文名\n\
 </when_to_use>\n\n\
 <when_not_to_use>\n\
 - 已知干员精确中文名时，直接调用 get_operator 更高效\n\
-- 需要干员详细数据（技能/属性/档案）时，直接调用 get_operator\n\
 </when_not_to_use>\n\n\
 <workflow>\n\
-推荐的两步工作流：\n\
-1. search_operators(query=关键词) → 获得干员准确中文名列表\n\
-2. get_operator(name=精确中文名, category=...) → 获取详细数据\n\
+Step 1（必执行）: 用 query 搜索 PRTS Wiki，经分类验证得到「搜索集合 A」\n\
+Step 2（有属性参数时并发执行）: 从干员一览提取全量属性，按参数过滤得到「属性集合 B」\n\
+结果: 无 B 则返回 A；有 B 则返回 A∩B\n\
+推荐两步工作流: search_operators → get_operator\n\
 </workflow>\n\n\
 <parameters>\n\
-- query: 搜索关键词，支持：干员中文名或部分名（如「银」）、外文名或部分外文名（如「exus」）、\n\
-  职业分支名（如「神射手」）、势力名（如「企鹅物流」）等任何出现在干员页面中的词\n\
-- limit: 最大返回结果数，默认 10，最大 20\n\
+  <param name=\"query\" required=\"true\">\n\
+    <desc>搜索关键词。支持干员中文名/部分名（银）、外文名（exus）、技能名、档案内容等任何干员页面中的词汇。</desc>\n\
+  </param>\n\
+  <param name=\"class\" required=\"false\">\n\
+    <desc>按职业筛选，精确匹配。</desc>\n\
+    <values>先锋, 近卫, 重装, 狙击, 术师, 医疗, 辅助, 特种</values>\n\
+  </param>\n\
+  <param name=\"rarity\" required=\"false\">\n\
+    <desc>按稀有度筛选，整数对应游戏内星级。</desc>\n\
+    <values>1, 2, 3, 4, 5, 6</values>\n\
+  </param>\n\
+  <param name=\"position\" required=\"false\">\n\
+    <desc>按站位类型筛选，精确匹配。</desc>\n\
+    <values>近战位, 远程位</values>\n\
+  </param>\n\
+  <param name=\"obtain\" required=\"false\">\n\
+    <desc>按获取途径筛选，支持关键词模糊匹配（如「寻访」可命中所有寻访类型）。</desc>\n\
+    <values>标准寻访, 中坚寻访, 限定寻访, 联动寻访, 公开招募, 活动获得, 信用交易所, 凭证交易所(采购), 凭证交易所(高级/通用), 常驻赠送, 主线剧情, 周年奖励, 限时礼包, 记录修复奖励, 预约奖励</values>\n\
+  </param>\n\
+  <param name=\"tag\" required=\"false\">\n\
+    <desc>按公招词缀筛选，精确匹配。注意：「近战」「远程」不是词缀，请用 position 参数。</desc>\n\
+    <values>治疗, 支援, 输出, 爆发, 生存, 防护, 减速, 削弱, 控场, 召唤, 快速复活, 群攻, 位移, 元素, 高空, 费用回复, 支援机械, 新手</values>\n\
+  </param>\n\
+  <param name=\"limit\" required=\"false\">\n\
+    <desc>最大返回结果数，默认 10，最大 50。</desc>\n\
+  </param>\n\
 </parameters>\n\n\
 <output_format>\n\
-返回 Markdown 列表，包含干员中文名与 PRTS Wiki 页面链接。\n\
-若未找到匹配干员，则返回提示信息。\n\
-</output_format>\n\n\
-<important>\n\
-此 Tool 依赖 PRTS Wiki API，需要两次网络请求（并发执行）加一次分类验证请求。\n\
-响应时间约为 1~2 秒。\n\
-</important>",
+返回 Markdown 列表，含干员中文名与 PRTS Wiki 页面链接。若有过滤参数，说明搜索命中数与过滤后数量。\n\
+</output_format>",
     read_only_hint = true,
     destructive_hint = false,
     idempotent_hint = true,
@@ -131,18 +153,79 @@ struct CategoryEntry {
 #[allow(clippy::unsafe_derive_deserialize)]
 #[derive(Debug, ::serde::Deserialize, ::serde::Serialize, JsonSchema)]
 pub struct SearchOperatorsTool {
-    /// 搜索关键词。
-    /// 支持干员中文名（部分匹配）、外文名（部分匹配）、职业分支词、势力名等。
+    /// 搜索关键词（必填）。
+    /// 支持干员中文名（部分匹配）、外文名（部分匹配）、技能名、档案内容等。
     query: String,
 
-    /// 最大返回结果数。默认 10，最大 20。
+    /// 按职业精确过滤。可选值：先锋/近卫/重装/狙击/术师/医疗/辅助/特种。
+    class: Option<String>,
+
+    /// 按稀有度过滤（1-6，对应游戏内星级）。
+    rarity: Option<u8>,
+
+    /// 按站位精确过滤。可选值：近战位 / 远程位。
+    position: Option<String>,
+
+    /// 按获取途径过滤（contains 模糊匹配）。
+    obtain: Option<String>,
+
+    /// 按公招词缀精确过滤。
+    tag: Option<String>,
+
+    /// 最大返回结果数。默认 10，最大 50。
     limit: Option<u8>,
 }
 
 impl SearchOperatorsTool {
-    /// 执行 Tool 逻辑：并发搜索 → 合并去重 → 分类验证 → 返回 Markdown。
+    /// 判断是否提供了任意属性过滤参数。
+    fn has_filter_params(&self) -> bool {
+        self.class.is_some()
+            || self.rarity.is_some()
+            || self.position.is_some()
+            || self.obtain.is_some()
+            || self.tag.is_some()
+    }
+
+    /// 判断一条 `OperatorMeta` 是否满足所有过滤条件。
+    fn matches_filters(&self, meta: &OperatorMeta) -> bool {
+        // 职业：精确匹配
+        if let Some(c) = &self.class
+            && &meta.class != c
+        {
+            return false;
+        }
+        // 稀有度：精确匹配
+        if let Some(r) = self.rarity
+            && meta.rarity != r
+        {
+            return false;
+        }
+        // 位置：精确匹配
+        if let Some(p) = &self.position
+            && &meta.position != p
+        {
+            return false;
+        }
+        // 获取途径：contains 模糊匹配（用户输入"寻访"可命中所有寻访类型）
+        if let Some(o) = &self.obtain
+            && !meta.obtain.iter().any(|v| v.contains(o.as_str()))
+        {
+            return false;
+        }
+        // 词缀：精确匹配单个词缀
+        if let Some(t) = &self.tag
+            && !meta.tags.iter().any(|v| v == t)
+        {
+            return false;
+        }
+
+        true
+    }
+
+    /// 执行 Tool 逻辑：搜索 → [并发过滤] → 取交集 → 返回 Markdown。
     ///
     /// # Errors
+    ///
     /// 若网络请求失败，返回协议级 `CallToolError`。
     pub async fn call_tool(&self) -> Result<CallToolResult, CallToolError> {
         let query = self.query.trim();
@@ -152,16 +235,27 @@ impl SearchOperatorsTool {
             )));
         }
 
-        let limit = self.limit.unwrap_or(10).min(20) as usize;
+        let limit = self.limit.unwrap_or(10).min(50) as usize;
+        let has_filter = self.has_filter_params();
 
-        // 1. 并发调用 opensearch + 全文搜索
         let client = build_client().map_err(|e| CallToolError::new(std::io::Error::other(e)))?;
-        let (open_res, full_res) = tokio::join!(
+
+        // ── Step 1 & 2 并发执行 ─────────────────────────────────────────
+        // Step 1: opensearch + fulltext（必执行）
+        // Step 2: 干员一览拉取（仅有过滤参数时执行）
+        let (open_res, full_res, meta_res) = tokio::join!(
             call_opensearch(&client, query, limit),
             call_fulltext_search(&client, query, limit),
+            async {
+                if has_filter {
+                    fetch_operator_meta_list(&client).await.ok()
+                } else {
+                    None
+                }
+            }
         );
 
-        // 2. 合并候选，去重（以 title 为 key）
+        // ── 合并搜索候选，去重 ──────────────────────────────────────────
         let mut seen: HashSet<String> = HashSet::new();
         let mut candidates: Vec<SearchCandidate> = Vec::new();
 
@@ -170,7 +264,7 @@ impl SearchOperatorsTool {
             .into_iter()
             .chain(full_res.unwrap_or_default())
         {
-            // 过滤子页面（含 `/` 分隔符的页面肯定不是顶层干员页）
+            // 过滤子页面（含 `/` 的页面不是顶层干员页）
             if candidate.title.contains('/') {
                 continue;
             }
@@ -187,13 +281,13 @@ impl SearchOperatorsTool {
             )]));
         }
 
-        // 3. 分类验证：批量核查哪些候选页面属于「分类:干员」
+        // ── Step 1: Category 验证，得到集合 A ──────────────────────────
         let titles: Vec<&str> = candidates.iter().map(|c| c.title.as_str()).collect();
-        let operator_titles = verify_operator_category(&client, &titles)
+        let set_a = verify_operator_category(&client, &titles)
             .await
             .unwrap_or_default();
 
-        if operator_titles.is_empty() {
+        if set_a.is_empty() {
             return Ok(CallToolResult::text_content(vec![TextContent::from(
                 format!(
                     "搜索「{query}」未找到符合条件的干员页面。\n\n\
@@ -202,11 +296,64 @@ impl SearchOperatorsTool {
             )]));
         }
 
-        // 4. 组装 Markdown 输出
-        let output = format_result(query, &operator_titles, limit);
+        // ── Step 2: 属性过滤，得到集合 B，取 A ∩ B ────────────────────
+        let final_names: Vec<String> = if let Some(meta_list) = meta_res {
+            // 构建属性过滤后的干员名集合 B
+            let set_b: HashSet<String> = meta_list
+                .into_iter()
+                .filter(|meta| self.matches_filters(meta))
+                .map(|meta| meta.zh_name)
+                .collect();
+
+            // 取 A ∩ B，保持 A 的顺序（alphabetical，来自 verify_operator_category）
+            set_a
+                .into_iter()
+                .filter(|name| set_b.contains(name))
+                .collect()
+        } else {
+            set_a
+        };
+
+        if final_names.is_empty() {
+            let filter_hint = self.filter_hint();
+            return Ok(CallToolResult::text_content(vec![TextContent::from(
+                format!(
+                    "搜索「{query}」找到了干员，但无人满足筛选条件（{filter_hint}）。\n\n\
+                     建议放宽筛选条件后重试。"
+                ),
+            )]));
+        }
+
+        // ── 组装 Markdown 输出 ──────────────────────────────────────────
+        let output = format_result(query, &final_names, limit, has_filter);
         Ok(CallToolResult::text_content(vec![TextContent::from(
             output,
         )]))
+    }
+
+    /// 生成过滤条件的简要描述（用于无结果时的错误提示）。
+    fn filter_hint(&self) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(c) = &self.class {
+            parts.push(format!("职业={c}"));
+        }
+        if let Some(r) = self.rarity {
+            parts.push(format!("稀有度={r}星"));
+        }
+        if let Some(p) = &self.position {
+            parts.push(format!("位置={p}"));
+        }
+        if let Some(o) = &self.obtain {
+            parts.push(format!("获取途径含「{o}」"));
+        }
+        if let Some(t) = &self.tag {
+            parts.push(format!("词缀={t}"));
+        }
+        if parts.is_empty() {
+            "无".to_string()
+        } else {
+            parts.join("，")
+        }
     }
 }
 
@@ -310,11 +457,17 @@ async fn verify_operator_category(
 // ─── 输出格式化 ───────────────────────────────────────────────────────────
 
 /// 将干员名列表格式化为 Markdown 输出。
-fn format_result(query: &str, operators: &[String], limit: usize) -> String {
+fn format_result(query: &str, operators: &[String], limit: usize, filtered: bool) -> String {
     let count = operators.len();
     let mut lines: Vec<String> = Vec::new();
 
-    lines.push(format!("## 搜索「{query}」共找到 {count} 名干员\n"));
+    if filtered {
+        lines.push(format!(
+            "## 搜索「{query}」并筛选后，共找到 {count} 名干员\n"
+        ));
+    } else {
+        lines.push(format!("## 搜索「{query}」共找到 {count} 名干员\n"));
+    }
 
     for name in operators {
         let url = format!("{PRTS_PAGE_BASE}{}", urlencoding::encode(name));
