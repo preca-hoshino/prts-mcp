@@ -94,6 +94,7 @@ impl ServerHandler for MyServerHandler {
 
         match tool_params {
             OperatorTools::GetOperatorTool(tool) => tool.call_tool().await,
+            OperatorTools::SearchOperatorsTool(tool) => tool.call_tool().await,
         }
     }
 }
