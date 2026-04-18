@@ -1,5 +1,5 @@
 #![allow(missing_docs)]
-//! This module groups all the tool definitions and handles the macro to expose them as a unified set.
+//! 本模块统一管理所有 Tool 定义，以及各域的 wikitext 解析器。
 
 pub mod get_operator;
 
