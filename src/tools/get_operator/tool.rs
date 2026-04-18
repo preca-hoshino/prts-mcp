@@ -5,7 +5,6 @@
 //!
 //! 接收干员名与数据域标识，从 PRTS Wiki 拉取并解析对应的 Markdown 数据。
 
-use crate::tools::parsers;
 use crate::utils::categorizer::categorize_lines;
 use crate::utils::wiki_client::fetch_wikitext;
 use rust_mcp_sdk::macros::JsonSchema;
@@ -72,25 +71,25 @@ impl GetOperatorTool {
 
         // 5. 路由解析
         let parsed: Vec<String> = match self.category.to_uppercase().as_str() {
-            "BASIC" => parsers::basic::parse_basic(&blocks.basic, &main_text),
+            "BASIC" => super::basic::parse_basic(&blocks.basic, &main_text),
 
-            "COMBAT" => parsers::combat::parse_combat(&combat_lines, Some(&main_text)).await,
+            "COMBAT" => super::combat::parse_combat(&combat_lines, Some(&main_text)).await,
 
             "BUILD" => {
                 let all_lines: Vec<String> = main_text.lines().map(str::to_string).collect();
-                parsers::build::parse_build(&all_lines)
+                super::build::parse_build(&all_lines)
             }
 
-            "LORE" => parsers::lore::parse_lore(&blocks.lore, &main_text),
+            "LORE" => super::lore::parse_lore(&blocks.lore, &main_text),
 
-            "GALLERY" => parsers::gallery::parse_gallery(&blocks.gallery, &main_text, &self.name),
+            "GALLERY" => super::gallery::parse_gallery(&blocks.gallery, &main_text, &self.name),
 
             "VOICE" => {
                 let voice_page = format!("{}/语音记录", self.name);
                 let voice_text = fetch_wikitext(&voice_page)
                     .await
                     .map_err(|e| CallToolError::new(std::io::Error::other(e.to_string())))?;
-                parsers::voice::parse_voice(&voice_text)
+                super::voice::parse_voice(&voice_text)
             }
 
             _ => {
