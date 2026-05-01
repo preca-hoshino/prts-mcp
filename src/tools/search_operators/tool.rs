@@ -43,7 +43,7 @@ use crate::resources::operator_list::{OperatorMeta, fetch_operator_meta_list};
     description = "在 PRTS Wiki 中搜索明日方舟干员。先用关键词搜索，若提供属性参数则进一步过滤，两者取交集返回匹配干员列表。\n\n\
 <when_to_use>\n\
 - 用户知道干员名称的一部分（中文或外文），需要确认正式名称\n\
-- 用户想按职业/星级/获取途径/词缀筛选干员\n\
+- 用户想按职业/职业分支/星级/获取途径/词缀筛选干员\n\
 - 调用 get_operator 前确认干员精确中文名\n\
 </when_to_use>\n\n\
 <when_not_to_use>\n\
@@ -53,6 +53,7 @@ use crate::resources::operator_list::{OperatorMeta, fetch_operator_meta_list};
 <parameters>\n\
 - query: 搜索关键词（必填）。支持干员中文名/部分名（银）、外文名（exus）、技能名、档案内容等任何干员页面中的词汇。\n\
 - class: 按职业筛选，精确匹配。省略时不限制职业。合法值：先锋 / 近卫 / 重装 / 狙击 / 术师 / 医疗 / 辅助 / 特种。\n\
+- subprofession: 按职业分支筛选，精确匹配。省略时不限制分支。合法值：尖兵 / 冲锋手 / 战术家 / 执旗手 / 情报官 / 策士 / 强攻手 / 术战者 / 教官 / 领主 / 剑豪 / 武者 / 无畏者 / 收割者 / 解放者 / 重剑手 / 撼地者 / 本源近卫 / 佣兵 / 铁卫 / 守护者 / 不屈者 / 驭法铁卫 / 决战者 / 要塞 / 哨戒铁卫 / 本源铁卫 / 速射手 / 重射手 / 炮手 / 神射手 / 散射手 / 攻城手 / 投掷手 / 猎手 / 回环射手 / 裂空炮手 / 中坚术师 / 扩散术师 / 驭械术师 / 阵法术师 / 秘术师 / 链术师 / 轰击术师 / 本源术师 / 塑灵术师 / 医师 / 群愈师 / 疗养师 / 行医 / 咒愈师 / 链愈师 / 守望者 / 凝滞师 / 削弱者 / 吟游者 / 护佑者 / 召唤师 / 工匠 / 巫役 / 处决者 / 推击手 / 伏击客 / 钩索师 / 怪杰 / 行商 / 陷阱师 / 傀儡师 / 炼金师 / 巡空者。\n\
 - rarity: 按稀有度筛选，整数对应游戏内星级。省略时不限制稀有度。合法值：1 / 2 / 3 / 4 / 5 / 6。\n\
 - position: 按站位类型筛选，精确匹配。省略时不限制站位。合法值：近战位 / 远程位。\n\
 - obtain: 按获取途径筛选，支持关键词模糊匹配（如「寻访」可命中所有寻访类型）。省略时不限制获取途径。\n\
@@ -86,6 +87,22 @@ pub struct SearchOperatorsTool {
     /// 示例：`"class": "狙击"` 仅返回狙击干员。
     class: Option<String>,
 
+    /// 按职业分支精确过滤，省略时不限制分支。
+    /// 合法值：尖兵 / 冲锋手 / 战术家 / 执旗手 / 情报官 / 策士 /
+    /// 强攻手 / 术战者 / 教官 / 领主 / 剑豪 / 武者 / 无畏者 /
+    /// 收割者 / 解放者 / 重剑手 / 撼地者 / 本源近卫 / 佣兵 /
+    /// 铁卫 / 守护者 / 不屈者 / 驭法铁卫 / 决战者 / 要塞 /
+    /// 哨戒铁卫 / 本源铁卫 / 速射手 / 重射手 / 炮手 / 神射手 /
+    /// 散射手 / 攻城手 / 投掷手 / 猎手 / 回环射手 / 裂空炮手 /
+    /// 中坚术师 / 扩散术师 / 驭械术师 / 阵法术师 / 秘术师 /
+    /// 链术师 / 轰击术师 / 本源术师 / 塑灵术师 / 医师 / 群愈师 /
+    /// 疗养师 / 行医 / 咒愈师 / 链愈师 / 守望者 / 凝滞师 /
+    /// 削弱者 / 吟游者 / 护佑者 / 召唤师 / 工匠 / 巫役 /
+    /// 处决者 / 推击手 / 伏击客 / 钩索师 / 怪杰 / 行商 /
+    /// 陷阱师 / 傀儡师 / 炼金师 / 巡空者。
+    /// 示例：`"subprofession": "尖兵"` 仅返回尖兵分支干员。
+    subprofession: Option<String>,
+
     /// 按稀有度过滤，整数对应游戏内星级，省略时不限制稀有度。
     /// 合法值：1 / 2 / 3 / 4 / 5 / 6。
     /// 示例：`"rarity": 6` 仅返回六星干员。
@@ -118,6 +135,7 @@ impl SearchOperatorsTool {
         self.class.is_some()
             || self.rarity.is_some()
             || self.position.is_some()
+            || self.subprofession.is_some()
             || self.obtain.is_some()
             || self.tag.is_some()
     }
@@ -139,6 +157,12 @@ impl SearchOperatorsTool {
         // 位置：精确匹配
         if let Some(p) = &self.position
             && &meta.position != p
+        {
+            return false;
+        }
+        // 职业分支：精确匹配
+        if let Some(s) = &self.subprofession
+            && &meta.subprofession != s
         {
             return false;
         }
@@ -276,6 +300,9 @@ impl SearchOperatorsTool {
         }
         if let Some(p) = &self.position {
             parts.push(FMT_FILTER_ITEM.replace("{k}", "位置").replace("{v}", p));
+        }
+        if let Some(s) = &self.subprofession {
+            parts.push(FMT_FILTER_ITEM.replace("{k}", "职业分支").replace("{v}", s));
         }
         if let Some(o) = &self.obtain {
             parts.push(FMT_FILTER_OBTAIN.replace("{v}", o));
