@@ -33,6 +33,8 @@ pub struct OperatorMeta {
     pub obtain: Vec<String>,
     /// 公招词缀列表（`data-tag` 按空格分隔）
     pub tags: Vec<String>,
+    /// 职业分支（`data-subprofession`）：尖兵/冲锋手/战术家/…
+    pub subprofession: String,
 }
 
 // ─── 核心拉取函数 ─────────────────────────────────────────────────────────
@@ -94,6 +96,8 @@ pub async fn fetch_operator_meta_list(
             .map(str::to_string)
             .collect();
 
+        let subprofession = attr.attr("data-subprofession").unwrap_or("").to_string();
+
         meta_list.push(OperatorMeta {
             zh_name,
             class,
@@ -101,6 +105,7 @@ pub async fn fetch_operator_meta_list(
             position,
             obtain,
             tags,
+            subprofession,
         });
     }
 
