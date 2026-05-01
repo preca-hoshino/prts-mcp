@@ -1,6 +1,6 @@
 #![allow(clippy::missing_docs_in_private_items)]
 #![allow(missing_docs)]
-//! `search_operators` 的 MediaWiki API 交互层。
+//! `search_operators` 的 `MediaWiki` API 交互层。
 //!
 //! 包含 API URL 常量、响应反序列化类型及所有网络请求函数。
 //! 与 Tool 业务逻辑解耦，供 [`super::tool`] 调用。
