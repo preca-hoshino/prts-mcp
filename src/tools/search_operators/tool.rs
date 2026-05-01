@@ -107,44 +107,26 @@ struct CategoryEntry {
 </when_to_use>\n\n\
 <when_not_to_use>\n\
 - 已知干员精确中文名时，直接调用 get_operator 更高效\n\
+- 需要获取干员详细数据（技能、面板、档案）时，使用 get_operator\n\
 </when_not_to_use>\n\n\
-<workflow>\n\
-Step 1（必执行）: 用 query 搜索 PRTS Wiki，经分类验证得到「搜索集合 A」\n\
-Step 2（有属性参数时并发执行）: 从干员一览提取全量属性，按参数过滤得到「属性集合 B」\n\
-结果: 无 B 则返回 A；有 B 则返回 A∩B\n\
-推荐两步工作流: search_operators → get_operator\n\
-</workflow>\n\n\
 <parameters>\n\
-  <param name=\"query\" required=\"true\">\n\
-    <desc>搜索关键词。支持干员中文名/部分名（银）、外文名（exus）、技能名、档案内容等任何干员页面中的词汇。</desc>\n\
-  </param>\n\
-  <param name=\"class\" required=\"false\">\n\
-    <desc>按职业筛选，精确匹配。</desc>\n\
-    <values>先锋, 近卫, 重装, 狙击, 术师, 医疗, 辅助, 特种</values>\n\
-  </param>\n\
-  <param name=\"rarity\" required=\"false\">\n\
-    <desc>按稀有度筛选，整数对应游戏内星级。</desc>\n\
-    <values>1, 2, 3, 4, 5, 6</values>\n\
-  </param>\n\
-  <param name=\"position\" required=\"false\">\n\
-    <desc>按站位类型筛选，精确匹配。</desc>\n\
-    <values>近战位, 远程位</values>\n\
-  </param>\n\
-  <param name=\"obtain\" required=\"false\">\n\
-    <desc>按获取途径筛选，支持关键词模糊匹配（如「寻访」可命中所有寻访类型）。</desc>\n\
-    <values>标准寻访, 中坚寻访, 限定寻访, 联动寻访, 公开招募, 活动获得, 信用交易所, 凭证交易所(采购), 凭证交易所(高级/通用), 常驻赠送, 主线剧情, 周年奖励, 限时礼包, 记录修复奖励, 预约奖励</values>\n\
-  </param>\n\
-  <param name=\"tag\" required=\"false\">\n\
-    <desc>按公招词缀筛选，精确匹配。注意：「近战」「远程」不是词缀，请用 position 参数。</desc>\n\
-    <values>治疗, 支援, 输出, 群攻, 减速, 生存, 防护, 削弱, 位移, 控场, 爆发, 召唤, 快速复活, 费用回复, 支援机械, 元素, 高空</values>\n\
-  </param>\n\
-  <param name=\"limit\" required=\"false\">\n\
-    <desc>最大返回结果数，默认 10，最大 50。</desc>\n\
-  </param>\n\
+- query: 搜索关键词（必填）。支持干员中文名/部分名（银）、外文名（exus）、技能名、档案内容等任何干员页面中的词汇。\n\
+- class: 按职业筛选，精确匹配。省略时不限制职业。合法值：先锋 / 近卫 / 重装 / 狙击 / 术师 / 医疗 / 辅助 / 特种。\n\
+- rarity: 按稀有度筛选，整数对应游戏内星级。省略时不限制稀有度。合法值：1 / 2 / 3 / 4 / 5 / 6。\n\
+- position: 按站位类型筛选，精确匹配。省略时不限制站位。合法值：近战位 / 远程位。\n\
+- obtain: 按获取途径筛选，支持关键词模糊匹配（如「寻访」可命中所有寻访类型）。省略时不限制获取途径。\n\
+- tag: 按公招词缀筛选，精确匹配。省略时不限制词缀。注意：「近战」「远程」不是词缀，请用 position 参数。合法值：治疗 / 支援 / 输出 / 群攻 / 减速 / 生存 / 防护 / 削弱 / 位移 / 控场 / 爆发 / 召唤 / 快速复活 / 费用回复 / 支援机械 / 元素 / 高空。\n\
+- limit: 最大返回结果数，默认 10，超出自动截断为 50。\n\
 </parameters>\n\n\
 <output_format>\n\
-返回 Markdown 列表，含干员中文名与 PRTS Wiki 页面链接。若有过滤参数，说明搜索命中数与过滤后数量。\n\
-</output_format>",
+返回 Markdown 列表，含干员中文名与 PRTS Wiki 页面链接。\n\
+若有过滤参数，说明搜索命中数、过滤后数量与筛选条件。\n\
+</output_format>\n\n\
+<important>\n\
+此工具依赖 PRTS Wiki 外部网络请求，响应受网络状况影响。\n\
+当过滤后结果为空时，工具会返回未过滤的命中数供参考，便于调整筛选条件。\n\
+推荐两步工作流: search_operators → get_operator。\n\
+</important>",
     read_only_hint = true,
     destructive_hint = false,
     idempotent_hint = true,
