@@ -26,6 +26,14 @@ use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 /// - `GALLERY` — 图鉴立绘（精英立绘描述、时装信息与链接）
 /// - `VOICE`   — 语音台词（中日文台词文本与音频链接）
 /// - `ALL`     — 按顺序获取以上全部数据域
+///
+/// # Examples
+///
+/// ```json
+/// {"name": "能天使", "category": "COMBAT"}
+/// {"name": "Mon3tr", "category": "ALL"}
+/// {"name": "陈", "category": "LORE"}
+/// ```
 #[mcp_tool(
     name = "get_operator",
     description = "从 PRTS Wiki 查询明日方舟干员的详细数据，以 Markdown 格式返回。\n\n\
@@ -60,13 +68,17 @@ use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 )]
 #[derive(Debug, ::serde::Deserialize, ::serde::Serialize, JsonSchema)]
 pub struct GetOperatorTool {
-    /// 干员名称，须与 PRTS Wiki 页面标题一致。
-    /// 仅支持中文名（如「能天使」）。名称错误时工具将返回以 ❌ 开头的错误提示。
+    /// 干员名称（必填），须与 PRTS Wiki 页面标题一致。
+    /// 仅支持中文名，如「能天使」「陈」「Mon3tr」。
+    /// 名称错误或页面不存在时工具将返回以 🔍 开头的错误提示，请检查拼写后重试。
+    /// 示例：`"name": "能天使"`。
     name: String,
 
-    /// 数据域标识符（大小写不敏感）。
+    /// 数据域标识符（大小写不敏感）。确定要返回的数据类别。
     /// 合法值：BASIC（基础信息）/ COMBAT（战斗数据）/ BUILD（养成材料）/
     /// LORE（干员档案）/ GALLERY（图鉴立绘）/ VOICE（语音台词）/ ALL（全部数据域）。
+    /// 无效值将返回以 ❌ 开头的错误提示并列出所有合法选项。
+    /// 示例：`"category": "COMBAT"` 返回战斗相关数据。
     category: String,
 }
 
