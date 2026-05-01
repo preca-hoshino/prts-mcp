@@ -8,96 +8,22 @@
 //! 2. 若提供了任意属性过滤参数，拉取「干员一览」HTML 提取全量元数据，
 //!    内存过滤后得到「属性集合 B」。
 //! 3. 若无过滤参数返回 A；否则返回 A ∩ B。
+//!
+//! API 交互细节见 [`super::api`]，输出格式化见 [`super::format`]。
 
 use std::collections::HashSet;
 
-use reqwest::Client;
 use rust_mcp_sdk::macros::{JsonSchema, mcp_tool};
 use rust_mcp_sdk::schema::schema_utils::CallToolError;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
-use serde::Deserialize;
 
+use super::api::{self, SearchCandidate};
+use super::format::format_result;
 use super::strings::{
     ERR_CATEGORY_NO_MATCH, ERR_QUERY_EMPTY, ERR_SEARCH_NO_MATCH, FILTER_HINT_NONE, FMT_FILTER_ITEM,
-    FMT_FILTER_OBTAIN, FMT_GET_OPERATOR_HINT, FMT_LIMIT_HINT, FMT_TITLE_FILTERED, FMT_TITLE_SEARCH,
-    WARN_FILTER_NO_MATCH,
+    FMT_FILTER_OBTAIN, WARN_FILTER_NO_MATCH,
 };
 use crate::resources::operator_list::{OperatorMeta, fetch_operator_meta_list};
-
-// ─── MediaWiki API URL 常量 ────────────────────────────────────────────────
-
-/// `OpenSearch` API（标题前缀补全，支持外文名重定向解析）
-const OPENSEARCH_API: &str =
-    "https://prts.wiki/api.php?action=opensearch&format=json&redirects=resolve";
-
-/// 全文搜索 API（按页面正文内容检索）
-const FULLTEXT_SEARCH_API: &str =
-    "https://prts.wiki/api.php?action=query&list=search&format=json&srnamespace=0&srwhat=text";
-
-/// 分类验证 API（批量核查页面是否属于 `分类:干员`）
-const CATEGORY_CHECK_API: &str = "https://prts.wiki/api.php?action=query&format=json&prop=categories&clcategories=%E5%88%86%E7%B1%BB:%E5%B9%B2%E5%91%98";
-
-/// 干员页面的标准分类标题
-const OPERATOR_CATEGORY: &str = "分类:干员";
-
-/// PRTS Wiki 干员页面的基础 URL 前缀
-const PRTS_PAGE_BASE: &str = "https://prts.wiki/w/";
-
-// ─── 内部数据结构 ──────────────────────────────────────────────────────────
-
-/// 搜索结果候选（来自 API）
-#[derive(Debug, Clone)]
-struct SearchCandidate {
-    title: String,
-}
-
-// ─── OpenSearch API 响应反序列化 ──────────────────────────────────────────
-
-/// `action=opensearch` 的响应格式：
-/// `[query, [title, ...], [desc, ...], [url, ...]]`
-type OpenSearchResponse = (String, Vec<String>, Vec<String>, Vec<String>);
-
-// ─── 全文搜索 API 响应反序列化 ────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-struct FulltextResponse {
-    query: FulltextQuery,
-}
-
-#[derive(Debug, Deserialize)]
-struct FulltextQuery {
-    search: Vec<FulltextHit>,
-}
-
-#[derive(Debug, Deserialize)]
-struct FulltextHit {
-    title: String,
-}
-
-// ─── 分类验证 API 响应反序列化 ────────────────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-struct CategoryCheckResponse {
-    query: CategoryCheckQuery,
-}
-
-#[derive(Debug, Deserialize)]
-struct CategoryCheckQuery {
-    pages: std::collections::HashMap<String, CategoryPage>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CategoryPage {
-    title: String,
-    /// 仅在页面属于所请求的分类时才存在此字段
-    #[serde(default)]
-    categories: Vec<CategoryEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CategoryEntry {
-    title: String,
-}
 
 // ─── Tool 定义 ────────────────────────────────────────────────────────────
 
@@ -248,14 +174,15 @@ impl SearchOperatorsTool {
         let limit = self.limit.unwrap_or(10).min(50) as usize;
         let has_filter = self.has_filter_params();
 
-        let client = build_client().map_err(|e| CallToolError::new(std::io::Error::other(e)))?;
+        let client =
+            api::build_client().map_err(|e| CallToolError::new(std::io::Error::other(e)))?;
 
         // ── Step 1 & 2 并发执行 ─────────────────────────────────────────
         // Step 1: opensearch + fulltext（必执行）
         // Step 2: 干员一览拉取（仅有过滤参数时执行）
         let (open_res, full_res, meta_res) = tokio::join!(
-            call_opensearch(&client, query, limit),
-            call_fulltext_search(&client, query, limit),
+            api::call_opensearch(&client, query, limit),
+            api::call_fulltext_search(&client, query, limit),
             async {
                 if has_filter {
                     fetch_operator_meta_list(&client).await.ok()
@@ -291,7 +218,7 @@ impl SearchOperatorsTool {
 
         // ── Step 1: Category 验证，得到集合 A ──────────────────────────
         let titles: Vec<&str> = candidates.iter().map(|c| c.title.as_str()).collect();
-        let set_a = verify_operator_category(&client, &titles)
+        let set_a = api::verify_operator_category(&client, &titles)
             .await
             .unwrap_or_default();
 
@@ -362,138 +289,4 @@ impl SearchOperatorsTool {
             parts.join("，")
         }
     }
-}
-
-// ─── 网络请求函数 ─────────────────────────────────────────────────────────
-
-/// 构建带 User-Agent 的 HTTP 客户端。
-fn build_client() -> Result<Client, Box<dyn std::error::Error + Send + Sync>> {
-    Ok(Client::builder().user_agent("prts-mcp/0.1.0").build()?)
-}
-
-/// 调用 `action=opensearch` API，返回标题前缀匹配的候选列表。
-///
-/// 借助 `redirects=resolve`，外文名重定向页面会自动解析为中文标题。
-async fn call_opensearch(
-    client: &Client,
-    query: &str,
-    limit: usize,
-) -> Result<Vec<SearchCandidate>, Box<dyn std::error::Error + Send + Sync>> {
-    let url = format!(
-        "{OPENSEARCH_API}&search={}&limit={}",
-        urlencoding::encode(query),
-        limit
-    );
-
-    let resp = client.get(&url).send().await?;
-    let data: OpenSearchResponse = resp.json().await?;
-
-    // 返回格式：[query, [title,...], [desc,...], [url,...]]
-    Ok(data
-        .1
-        .into_iter()
-        .map(|title| SearchCandidate { title })
-        .collect())
-}
-
-/// 调用 `action=query&list=search` API，返回全文匹配的候选列表。
-async fn call_fulltext_search(
-    client: &Client,
-    query: &str,
-    limit: usize,
-) -> Result<Vec<SearchCandidate>, Box<dyn std::error::Error + Send + Sync>> {
-    let url = format!(
-        "{FULLTEXT_SEARCH_API}&srsearch={}&srlimit={}",
-        urlencoding::encode(query),
-        limit
-    );
-
-    let resp = client.get(&url).send().await?;
-    let data: FulltextResponse = resp.json().await?;
-
-    Ok(data
-        .query
-        .search
-        .into_iter()
-        .map(|hit| SearchCandidate { title: hit.title })
-        .collect())
-}
-
-/// 批量验证候选标题是否属于 `分类:干员`，返回通过验证的干员中文名列表。
-///
-/// `MediaWiki` `prop=categories&clcategories=分类:干员` 仅在页面属于该分类时
-/// 才会在响应中包含 `categories` 字段，利用此特性精确识别干员页面。
-async fn verify_operator_category(
-    client: &Client,
-    titles: &[&str],
-) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
-    if titles.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    // MediaWiki 支持 `|` 分隔多个标题，一次请求验证所有候选
-    let titles_param = titles
-        .iter()
-        .map(|t| urlencoding::encode(t).into_owned())
-        .collect::<Vec<_>>()
-        .join("%7C"); // `|` 的 URL 编码
-
-    let url = format!("{CATEGORY_CHECK_API}&titles={titles_param}");
-
-    let resp = client.get(&url).send().await?;
-    let data: CategoryCheckResponse = resp.json().await?;
-
-    // 仅保留 categories 字段中包含「分类:干员」的页面
-    let mut operators: Vec<String> = data
-        .query
-        .pages
-        .into_values()
-        .filter(|page| {
-            page.categories
-                .iter()
-                .any(|cat| cat.title == OPERATOR_CATEGORY)
-        })
-        .map(|page| page.title)
-        .collect();
-
-    // 按名称排序，保证输出稳定
-    operators.sort_unstable();
-    Ok(operators)
-}
-
-// ─── 输出格式化 ───────────────────────────────────────────────────────────
-
-/// 将干员名列表格式化为 Markdown 输出。
-fn format_result(query: &str, operators: &[String], limit: usize, filtered: bool) -> String {
-    let count = operators.len();
-    let mut lines: Vec<String> = Vec::new();
-
-    if filtered {
-        lines.push(
-            FMT_TITLE_FILTERED
-                .replace("{query}", query)
-                .replace("{count}", &count.to_string()),
-        );
-    } else {
-        lines.push(
-            FMT_TITLE_SEARCH
-                .replace("{query}", query)
-                .replace("{count}", &count.to_string()),
-        );
-    }
-
-    for name in operators {
-        let url = format!("{PRTS_PAGE_BASE}{}", urlencoding::encode(name));
-        lines.push(format!("- **{name}** — [PRTS Wiki 页面]({url})"));
-    }
-
-    if count >= limit {
-        lines.push(String::new());
-        lines.push(FMT_LIMIT_HINT.replace("{limit}", &limit.to_string()));
-    }
-
-    lines.push(String::new());
-    lines.push(FMT_GET_OPERATOR_HINT.to_string());
-
-    lines.join("\n")
 }
