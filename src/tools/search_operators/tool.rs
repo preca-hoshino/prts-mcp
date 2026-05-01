@@ -102,6 +102,16 @@ struct CategoryEntry {
 // ─── Tool 定义 ────────────────────────────────────────────────────────────
 
 /// 在 PRTS Wiki 搜索明日方舟干员的 MCP Tool。
+///
+/// 先用关键词搜索，若提供属性过滤参数则进一步筛选，两者取交集返回匹配干员列表。
+///
+/// # Examples
+///
+/// ```json
+/// {"query": "银灰", "class": "近卫", "rarity": 6}
+/// {"query": "exusiai", "rarity": 6}
+/// {"query": "天使", "limit": 5}
+/// ```
 #[mcp_tool(
     name = "search_operators",
     description = "在 PRTS Wiki 中搜索明日方舟干员。先用关键词搜索，若提供属性参数则进一步过滤，两者取交集返回匹配干员列表。\n\n\
