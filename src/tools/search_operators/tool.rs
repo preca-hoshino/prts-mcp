@@ -17,6 +17,11 @@ use rust_mcp_sdk::schema::schema_utils::CallToolError;
 use rust_mcp_sdk::schema::{CallToolResult, TextContent};
 use serde::Deserialize;
 
+use super::strings::{
+    ERR_CATEGORY_NO_MATCH, ERR_QUERY_EMPTY, ERR_SEARCH_NO_MATCH, FILTER_HINT_NONE, FMT_FILTER_ITEM,
+    FMT_FILTER_OBTAIN, FMT_GET_OPERATOR_HINT, FMT_LIMIT_HINT, FMT_TITLE_FILTERED, FMT_TITLE_SEARCH,
+    WARN_FILTER_NO_MATCH,
+};
 use crate::resources::operator_list::{OperatorMeta, fetch_operator_meta_list};
 
 // ─── MediaWiki API URL 常量 ────────────────────────────────────────────────
@@ -226,7 +231,7 @@ impl SearchOperatorsTool {
         let query = self.query.trim();
         if query.is_empty() {
             return Ok(CallToolResult::with_error(CallToolError::from_message(
-                "❌ 搜索关键词不能为空。".to_string(),
+                ERR_QUERY_EMPTY.to_string(),
             )));
         }
 
@@ -270,9 +275,7 @@ impl SearchOperatorsTool {
 
         if candidates.is_empty() {
             return Ok(CallToolResult::text_content(vec![TextContent::from(
-                format!(
-                    "未找到与「{query}」相关的干员。\n\n建议检查关键词拼写，或尝试更短的关键词。"
-                ),
+                ERR_SEARCH_NO_MATCH.replace("{query}", query),
             )]));
         }
 
@@ -284,10 +287,7 @@ impl SearchOperatorsTool {
 
         if set_a.is_empty() {
             return Ok(CallToolResult::text_content(vec![TextContent::from(
-                format!(
-                    "搜索「{query}」未找到符合条件的干员页面。\n\n\
-                     建议：尝试更精确的干员名称，或使用中文关键词。"
-                ),
+                ERR_CATEGORY_NO_MATCH.replace("{query}", query),
             )]));
         }
 
@@ -314,10 +314,10 @@ impl SearchOperatorsTool {
         if final_names.is_empty() {
             let filter_hint = self.filter_hint();
             return Ok(CallToolResult::text_content(vec![TextContent::from(
-                format!(
-                    "⚠️ 搜索「{query}」找到 {search_hit_count} 名干员，但无人满足筛选条件（{filter_hint}）。\n\n\
-                     建议放宽或移除筛选参数后重试。"
-                ),
+                WARN_FILTER_NO_MATCH
+                    .replace("{query}", query)
+                    .replace("{count}", &search_hit_count.to_string())
+                    .replace("{filter}", &filter_hint),
             )]));
         }
 
@@ -332,22 +332,22 @@ impl SearchOperatorsTool {
     fn filter_hint(&self) -> String {
         let mut parts: Vec<String> = Vec::new();
         if let Some(c) = &self.class {
-            parts.push(format!("职业={c}"));
+            parts.push(FMT_FILTER_ITEM.replace("{k}", "职业").replace("{v}", c));
         }
         if let Some(r) = self.rarity {
             parts.push(format!("稀有度={r}星"));
         }
         if let Some(p) = &self.position {
-            parts.push(format!("位置={p}"));
+            parts.push(FMT_FILTER_ITEM.replace("{k}", "位置").replace("{v}", p));
         }
         if let Some(o) = &self.obtain {
-            parts.push(format!("获取途径含「{o}」"));
+            parts.push(FMT_FILTER_OBTAIN.replace("{v}", o));
         }
         if let Some(t) = &self.tag {
-            parts.push(format!("词缀={t}"));
+            parts.push(FMT_FILTER_ITEM.replace("{k}", "词缀").replace("{v}", t));
         }
         if parts.is_empty() {
-            "无".to_string()
+            FILTER_HINT_NONE.to_string()
         } else {
             parts.join("，")
         }
@@ -459,11 +459,17 @@ fn format_result(query: &str, operators: &[String], limit: usize, filtered: bool
     let mut lines: Vec<String> = Vec::new();
 
     if filtered {
-        lines.push(format!(
-            "## 搜索「{query}」并筛选后，共找到 {count} 名干员\n"
-        ));
+        lines.push(
+            FMT_TITLE_FILTERED
+                .replace("{query}", query)
+                .replace("{count}", &count.to_string()),
+        );
     } else {
-        lines.push(format!("## 搜索「{query}」共找到 {count} 名干员\n"));
+        lines.push(
+            FMT_TITLE_SEARCH
+                .replace("{query}", query)
+                .replace("{count}", &count.to_string()),
+        );
     }
 
     for name in operators {
@@ -473,16 +479,11 @@ fn format_result(query: &str, operators: &[String], limit: usize, filtered: bool
 
     if count >= limit {
         lines.push(String::new());
-        lines.push(format!(
-            "> 结果已达上限 {limit} 条，可能存在更多匹配干员。建议使用更精确的关键词缩小范围。"
-        ));
+        lines.push(FMT_LIMIT_HINT.replace("{limit}", &limit.to_string()));
     }
 
     lines.push(String::new());
-    lines.push(
-        "> 提示：使用 `get_operator` 工具并传入干员中文名，可获取详细的技能、属性、档案等数据。"
-            .to_string(),
-    );
+    lines.push(FMT_GET_OPERATOR_HINT.to_string());
 
     lines.join("\n")
 }
