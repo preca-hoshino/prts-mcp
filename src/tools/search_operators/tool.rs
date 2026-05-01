@@ -292,6 +292,8 @@ impl SearchOperatorsTool {
         }
 
         // ── Step 2: 属性过滤，得到集合 B，取 A ∩ B ────────────────────
+        let search_hit_count = set_a.len();
+
         let final_names: Vec<String> = if let Some(meta_list) = meta_res {
             // 构建属性过滤后的干员名集合 B
             let set_b: HashSet<String> = meta_list
@@ -313,8 +315,8 @@ impl SearchOperatorsTool {
             let filter_hint = self.filter_hint();
             return Ok(CallToolResult::text_content(vec![TextContent::from(
                 format!(
-                    "搜索「{query}」找到了干员，但无人满足筛选条件（{filter_hint}）。\n\n\
-                     建议放宽筛选条件后重试。"
+                    "⚠️ 搜索「{query}」找到 {search_hit_count} 名干员，但无人满足筛选条件（{filter_hint}）。\n\n\
+                     建议放宽或移除筛选参数后重试。"
                 ),
             )]));
         }
